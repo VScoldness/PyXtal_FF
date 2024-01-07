@@ -23,6 +23,7 @@ plt.style.use("ggplot")
 
 from pyxtal_ff.models.optimizers.regressor import Regressor
 from pyxtal_ff.utilities.elements import Element
+from tqdm import tqdm
 
 eV2GPa = 160.21766
 
@@ -467,68 +468,20 @@ class NeuralNetwork():
         """ Calculate the total loss and MAE for energy and forces
         for a batch of structures per one optimization step. """ 
 
-        energy_loss, force_loss, stress_loss = 0., 0., 0.
-        energy_mae, force_mae, stress_mae = 0., 0., 0.
-        all_atoms = 0
-        s_count = 0
-
-        for x, dxdr, seq, rdxdr, energy, force, stress, sf, group in batch:
-            n_atoms = sum(len(value) for value in x.values())
-            all_atoms += n_atoms
-            _Energy = 0  # Predicted total energy for a structure
-            _force = torch.zeros([n_atoms, 3], dtype=torch.float64, device=self.device)
-            if self.stress_coefficient and (group in self.stress_group):
-                _stress = torch.zeros([6], dtype=torch.float64, device=self.device)
-            
-            dedx, sdedx = {}, {}
-            for element, model in models.items():
-                if x[element].nelement() > 0:
-                    _x = x[element].requires_grad_()
-                    _energy = model(_x).sum() # total energy for each specie
-                    _Energy += _energy
-
-                    if self.force_coefficient:
-                        dedx[element] = torch.autograd.grad(_energy, _x, create_graph=True)[0]
-                        _force -= torch.einsum("ik, ijkl->jl", dedx[element], dxdr[element]) 
-
-                    if self.stress_coefficient and (group in self.stress_group):
-                        if self.force_coefficient is None:
-                            dedx[element] = torch.autograd.grad(_energy, _x, create_graph=True)[0]
-                        _stress += -1 * torch.einsum("ik, ikl->l", dedx[element], rdxdr[element]) # [6]
-            
-            energy_loss += sf.item()*((_Energy - energy) / n_atoms) ** 2
-            energy_mae  += sf.item()*F.l1_loss(_Energy / n_atoms, energy / n_atoms)
-
-            if self.force_coefficient:
-                force_loss += sf.item()*self.force_coefficient * ((_force - force) ** 2).sum()
-                force_mae  += sf.item()*F.l1_loss(_force, force) * n_atoms
-
-            if self.stress_coefficient and (group in self.stress_group):
-                _stress *= eV2GPa
-
-                stress_loss += sf.item()*self.stress_coefficient * ((_stress - stress) ** 2).sum()
-                stress_mae += sf.item()*F.l1_loss(_stress, stress) * 6
-                
-                s_count += 6
-
-        energy_loss = energy_loss / (2. * len(batch))
-        energy_mae /= len(batch)
-
-        if self.force_coefficient:
-            force_loss = force_loss / (2. * all_atoms)
-            force_mae /= all_atoms
-            if self.stress_coefficient:
-                stress_loss = stress_loss / (2. * s_count)
-                stress_mae /= s_count
-                loss = energy_loss + force_loss + stress_loss
-            else:
-                loss = energy_loss + force_loss
-
-        else:
-            if self.stress_coefficient:
-                loss = energy_loss + stress_loss
-            else:
-                loss = energy_loss
+        output = [] 
+        # output = [cur_energy_loss, cur_force_loss, cur_stress_loss, cur_energy_mae, cur_force_mae, cur_stress_mae, n_atoms, cur_count]
+        for data in tqdm(batch):
+            cur_output = self.single_loss(models, data)
+            output.append(cur_output)
+        
+        output = self._sum_together(output)
+        
+        energy_loss = output[0] / (2. * len(batch))
+        force_loss  = output[1] / (2. * output[-2])
+        stress_loss = output[2] / (2. * output[-1])
+        energy_mae  = output[3] / len(batch)
+        force_mae   = output[4] / output[-2]
+        stress_mae  = output[5] / output[-1]
 
         # Add regularization to the total loss.
         reg = 0.
@@ -542,7 +495,61 @@ class NeuralNetwork():
         print("eng_loss: {:10.6f}     force_loss: {:10.6f}   stress_loss: {:10.6f}  regularization: {:10.6f}".format(\
                     energy_loss, force_loss, stress_loss, reg))
 
-        return loss, energy_mae, force_mae, stress_mae
+        return energy_loss+force_loss+stress_loss, energy_mae, force_mae, stress_mae
+    
+    @staticmethod
+    def _sum_together(output: list[list[float]]) -> list[float]:
+        res = [0 for _ in range(len(output[0]))]
+        for cur in output:
+            res = [i+j for (i, j) in zip(res, cur)]
+        return res
+
+    def single_loss(self, models, data):
+        (x, dxdr, seq, rdxdr, energy, force, stress, sf, group) = data
+        n_atoms = sum(len(value) for value in x.values())
+        cur_count = 0
+        _Energy = 0  # Predicted total energy for a structure
+        _force = torch.zeros([n_atoms, 3], dtype=torch.float64, device=self.device)
+        if self.stress_coefficient and (group in self.stress_group):
+            _stress = torch.zeros([6], dtype=torch.float64, device=self.device)
+        
+        dedx, sdedx = {}, {}
+        for element, model in models.items():
+            if x[element].nelement() > 0:
+                _x = x[element].requires_grad_()
+                _energy = model(_x).sum() # total energy for each specie
+                _Energy += _energy
+
+                dedx[element] = torch.autograd.grad(_energy, _x, create_graph=True)[0]
+                if self.force_coefficient:
+                    # dedx[element] = torch.autograd.grad(_energy, _x, create_graph=True)[0]
+                    _force -= torch.einsum("ik, ijkl->jl", dedx[element], dxdr[element]) 
+
+                if self.stress_coefficient and (group in self.stress_group):
+                    # if self.force_coefficient is None:
+                    #     dedx[element] = torch.autograd.grad(_energy, _x, create_graph=True)[0]
+                    _stress += -1 * torch.einsum("ik, ikl->l", dedx[element], rdxdr[element]) # [6]
+        
+        cur_energy_loss = sf.item()*((_Energy - energy) / n_atoms) ** 2
+        cur_energy_mae  = sf.item()*F.l1_loss(_Energy / n_atoms, energy / n_atoms)
+
+        cur_force_loss, cur_stress_loss = 0, 0
+        cur_force_mae, cur_stress_mae   = 0, 0
+
+        if self.force_coefficient:
+            cur_force_loss = sf.item()*self.force_coefficient * ((_force - force) ** 2).sum()
+            cur_force_mae  = sf.item()*F.l1_loss(_force, force) * n_atoms
+
+        if self.stress_coefficient and (group in self.stress_group):
+            _stress *= eV2GPa
+
+            cur_stress_loss = sf.item()*self.stress_coefficient * ((_stress - stress) ** 2).sum()
+            cur_stress_mae  = sf.item()*F.l1_loss(_stress, stress) * 6
+            cur_count = 6
+            
+        return [cur_energy_loss, cur_force_loss, cur_stress_loss, cur_energy_mae, cur_force_mae, cur_stress_mae, n_atoms, cur_count]
+            
+            
 
 
     def mean_absolute_error(self, true, predicted):
