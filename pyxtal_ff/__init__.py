@@ -128,6 +128,8 @@ class PyXtal_FF():
             - kernel: str (*GPR)
                 The kernel specifying the covariance function of the GPR.
                 The current development allows "RBF" and "DotProduct".
+            - n_thread: int
+                The number of thread
                 
         (*) required.
         (*NN) for Neural Network algorithm only.
@@ -203,7 +205,7 @@ class PyXtal_FF():
                     'random_seed', 'force_coefficient', 'unit', 'softmax_beta', 
                     'restart', 'optimizer', 'path', 'order', 'd_max', 
                     'epoch', 'device', 'alpha', 'batch_size', 'noise', 'kernel',
-                    'norm', 'stress_coefficient', 'stress_group', 'memory']
+                    'norm', 'stress_coefficient', 'stress_group', 'memory', 'n_thread']
         for key in model.keys():
             if key not in keywords:
                 msg = f"Don't recognize {key} in model. "+\
@@ -375,7 +377,8 @@ class PyXtal_FF():
                                        unit=_model['unit'],
                                        restart=_model['restart'],
                                        path=_model['path'],
-                                       memory=_model['memory'])
+                                       memory=_model['memory'],
+                                       n_thread=_model['n_thread'])
             self.optimizer = _model['optimizer']
                 
         elif self.algorithm == 'PR':

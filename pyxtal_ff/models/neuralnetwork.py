@@ -23,65 +23,65 @@ plt.style.use("ggplot")
 
 from pyxtal_ff.models.optimizers.regressor import Regressor
 from pyxtal_ff.utilities.elements import Element
-from tqdm import tqdm
 
 eV2GPa = 160.21766
 
 class NeuralNetwork():
-    """ Atom-centered Neural Network model. The inputs are atom-centered 
-    descriptors: BehlerParrinello or Bispectrum. The forward propagation of 
-    the Neural Network predicts energy per atom, and the derivative of the 
-    forward propagation predicts force.
+    """ 
+        Atom-centered Neural Network model. The inputs are atom-centered 
+        descriptors: BehlerParrinello or Bispectrum. The forward propagation of 
+        the Neural Network predicts energy per atom, and the derivative of the 
+        forward propagation predicts force.
 
-    A machine learning interatomic potential can developed by optimizing the 
-    weights of the Neural Network for a given system.
-    
-    Parameters
-    ----------
-    elements: list
-         A list of atomic species in the crystal system.
-    hiddenlayers: list or dict
-        [3, 3] contains 2 layers with 3 nodes each. Each atomic species in the 
-        crystal system is assigned with its own neural network architecture.
-    activation: str
-        The activation function for the neural network model.
-        Options: tanh, sigmoid, and linear.
-    random_seed: int
-        Random seed for generating random initial random weights.
-    batch_size: int
-        Determine the number of structures in a batch per optimization step.
-    epoch: int
-        A measure of the number of times all of the training vectors 
-        are used once to update the weights.
-    device: str
-        The device used to train: 'cpu' or 'cuda'.
-    force_coefficient: float
-        This parameter is used as the penalty parameter to scale 
-        the force contribution relative to the energy.
-    stress_coefficient: float 
-        This parameter is used as the balance parameter scaling
-        the stress contribution relative to the energy.
-    stress_group: list of strings
-        Only the intended group will be considered in stress training,
-        i.e. ['Elastic'].
-    alpha: float
-        L2 penalty (regularization) parameter.
-    softmax_beta: float
-        The parameters used for Softmax Energy Penalty function.
-    unit: str
-        The unit of energy ('eV' or 'Ha').
-    restart: str
-        Continuing Neural Network training from where it was left off.
-    path: str
-        A path to the directory where everything is saved.
-    memory: str
-        There are two options: 'in' or 'out'. 'in' will use load all
-        descriptors to memory as 'out' will call from disk as needed.
+        A machine learning interatomic potential can developed by optimizing the 
+        weights of the Neural Network for a given system.
+        
+        Parameters
+        ----------
+        elements: list
+            A list of atomic species in the crystal system.
+        hiddenlayers: list or dict
+            [3, 3] contains 2 layers with 3 nodes each. Each atomic species in the 
+            crystal system is assigned with its own neural network architecture.
+        activation: str
+            The activation function for the neural network model.
+            Options: tanh, sigmoid, and linear.
+        random_seed: int
+            Random seed for generating random initial random weights.
+        batch_size: int
+            Determine the number of structures in a batch per optimization step.
+        epoch: int
+            A measure of the number of times all of the training vectors 
+            are used once to update the weights.
+        device: str
+            The device used to train: 'cpu' or 'cuda'.
+        force_coefficient: float
+            This parameter is used as the penalty parameter to scale 
+            the force contribution relative to the energy.
+        stress_coefficient: float 
+            This parameter is used as the balance parameter scaling
+            the stress contribution relative to the energy.
+        stress_group: list of strings
+            Only the intended group will be considered in stress training,
+            i.e. ['Elastic'].
+        alpha: float
+            L2 penalty (regularization) parameter.
+        softmax_beta: float
+            The parameters used for Softmax Energy Penalty function.
+        unit: str
+            The unit of energy ('eV' or 'Ha').
+        restart: str
+            Continuing Neural Network training from where it was left off.
+        path: str
+            A path to the directory where everything is saved.
+        memory: str
+            There are two options: 'in' or 'out'. 'in' will use load all
+            descriptors to memory as 'out' will call from disk as needed.
     """
     def __init__(self, elements, hiddenlayers, activation, random_seed, 
                  batch_size, epoch, device, alpha, softmax_beta, unit, 
                  force_coefficient, stress_coefficient, stress_group,
-                 restart, path, memory):
+                 restart, path, memory, n_thread: int = 1):
         
         self.elements = sorted(elements)
         
@@ -159,7 +159,7 @@ class NeuralNetwork():
         self.restart = restart
         self.path = path
         self.memory = memory
-
+        self.n_thread = n_thread
         self.drange = None
 
 
@@ -220,7 +220,8 @@ class NeuralNetwork():
         print(f"Optimizer          : {optimizer['method']}")
         print(f"Force_coefficient  : {self.force_coefficient}")
         print(f"Stress_coefficient : {self.stress_coefficient}")
-        print(f"Batch_size         : {self.batch_size}\n")
+        print(f"Batch_size         : {self.batch_size}")
+        print(f"n_thread           : {self.n_thread}")
 
         # Run Neural Network Potential Training
         t0 = time.time()
@@ -467,13 +468,9 @@ class NeuralNetwork():
     def calculate_loss(self, models, batch):
         """ Calculate the total loss and MAE for energy and forces
         for a batch of structures per one optimization step. """ 
-
-        output = [] 
-        # output = [cur_energy_loss, cur_force_loss, cur_stress_loss, cur_energy_mae, cur_force_mae, cur_stress_mae, n_atoms, cur_count]
-        for data in tqdm(batch):
-            cur_output = self.single_loss(models, data)
-            output.append(cur_output)
         
+        output = self.single_thread_loss(models, batch) if self.n_thread == 1 else self.mutli_thread_loss(models, batch)
+        # output = [[cur_energy_loss, cur_force_loss, cur_stress_loss, cur_energy_mae, cur_force_mae, cur_stress_mae, n_atoms, cur_count], ...]
         output = self._sum_together(output)
         
         energy_loss = output[0] / (2. * len(batch))
@@ -496,6 +493,23 @@ class NeuralNetwork():
                     energy_loss, force_loss, stress_loss, reg))
 
         return energy_loss+force_loss+stress_loss, energy_mae, force_mae, stress_mae
+    
+    def single_thread_loss(self, model, batch):
+        output = [] 
+        for cur_batch in batch:
+            cur_output = self.single_loss(model, cur_batch)
+            output.append(cur_output)
+        return output
+    
+    def mutli_thread_loss(self, model, batch):
+        import concurrent.futures
+        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.n_thread) as executor:
+            results = [executor.submit(self.single_loss, model, cur_batch) for cur_batch in batch]
+            output = []
+            for f in concurrent.futures.as_completed(results):
+                output.append(f.result())
+        return output
     
     @staticmethod
     def _sum_together(output: list[list[float]]) -> list[float]:
@@ -546,7 +560,6 @@ class NeuralNetwork():
             cur_stress_loss = sf.item()*self.stress_coefficient * ((_stress - stress) ** 2).sum()
             cur_stress_mae  = sf.item()*F.l1_loss(_stress, stress) * 6
             cur_count = 6
-            
         return [cur_energy_loss, cur_force_loss, cur_stress_loss, cur_energy_mae, cur_force_mae, cur_stress_mae, n_atoms, cur_count]
             
             
