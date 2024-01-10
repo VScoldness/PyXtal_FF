@@ -512,7 +512,7 @@ class NeuralNetwork():
         return output
     
     @staticmethod
-    def _sum_together(output: list[list[float]]) -> list[float]:
+    def _sum_together(output):
         res = [0 for _ in range(len(output[0]))]
         for cur in output:
             res = [i+j for (i, j) in zip(res, cur)]
@@ -1051,6 +1051,7 @@ class NeuralNetwork():
 
     def get_stress_group(self, data):
         """ Get every kind of stress groups if None is defined by the user. """
+        print("self.stress_group is ", self.stress_group)
         if self.stress_coefficient and (self.stress_group is None):
             db = shelve.open(self.path+data)
             sg = []
@@ -1058,6 +1059,7 @@ class NeuralNetwork():
                 if db[str(i)]['group'] not in sg:
                     sg.append(db[str(i)]['group'])
             self.stress_group = sg
+        print("self.stress_group is ", self.stress_group)
 
 
     def _SOFTMAX(self, data, beta=-1):
