@@ -336,6 +336,7 @@ class PyXtal_FF():
                       'path': self.path,
                       'memory': 'in',
                       'optimizer': {},
+                      "n_thread" : 1,
                       }
             _model.update(model)
             
