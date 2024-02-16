@@ -59,6 +59,7 @@ class Database():#MutableSequence):
     def append(self, value):
         """ Append value to the end of the sequence. """
         self.insert(len(self), value)
+        self.length += 1
 
 
     def close(self):
@@ -132,126 +133,113 @@ class Database():#MutableSequence):
             lists = range(N1)
             
         if _cpu == 1:
+            print('\nStart computing features by single processor. Total: {:4d}'.format(len(lists)))
             for i, index in enumerate(lists):
-                d = self.compute(function, data[index])
+                d = compute(function, data[index], i)
                 self.append(d)
-                self.length += 1
-                print('\r{:4d} out of {:4d}'.format(i+1, len(lists)), flush=True, end='')
+                # print('\r{:4d} out of {:4d}'.format(i+1, len(lists)), flush=True, end='')
 
         else:
             # we do it for the reduced lists _data
-            _data = [data[item] for item in lists]
-            failed_ids = []
-            with Pool(_cpu) as p:
-                func = partial(self.compute, function)
-                for i, d in enumerate(p.imap_unordered(func, _data)):
-                    try:
-                        self.append(d)
-                        self.length += 1
-                    except: # track the failed structure ids
-                        failed_ids.append(i)
-                        #pass
-                    print('\r{:4d} out of {:4d}'.format(i+1, len(_data)), flush=True, end='')
-                p.close()
-                p.join()
-
-            # compute the missing structures in parallel calcs
-            for id in failed_ids: 
-                d = self.compute(function, _data[id])
-                self.append(d)
-                self.length += 1
-
+            import concurrent.futures
+            print('\nStart computing features by multiprocessers. Total: {:4d}'.format(len(lists)))
+            with concurrent.futures.ProcessPoolExecutor(max_workers=_cpu) as executor:
+                results = [executor.submit(compute, function, data[index], i) for i, index in enumerate(lists)]
+                output = []
+                for f in concurrent.futures.as_completed(results):
+                    output.append(f.result())
+            for cur_data in output:
+                self.append(cur_data)
         print(f"\nSaving descriptor-feature data to {self.name}.dat\n")
 
   
-    def compute(self, function, data):
-        """ Compute descriptor for one structure to the database. """
+def compute(function, data, i):
+    """ Compute descriptor for one structure to the database. """
+    print('\r{:4d}'.format(i+1), flush=True, end='')
 
-        if function['type'] in ['BehlerParrinello', 'ACSF']:
-            from pyxtal_ff.descriptors.ACSF import ACSF
-            d = ACSF(function['parameters'],
-                     function['Rc'], 
-                     function['force'],
-                     function['stress'], 
-                     function['cutoff'], False).calculate(data['structure'])
+    if function['type'] in ['BehlerParrinello', 'ACSF']:
+        from pyxtal_ff.descriptors.ACSF import ACSF
+        d = ACSF(function['parameters'],
+                    function['Rc'], 
+                    function['force'],
+                    function['stress'], 
+                    function['cutoff'], False).calculate(data['structure'])
 
-        elif function['type'] in ['wACSF', 'wacsf']:
-            from pyxtal_ff.descriptors.ACSF import ACSF
-            d = ACSF(function['parameters'],
-                     function['Rc'], 
-                     function['force'],
-                     function['stress'], 
-                     function['cutoff'], True).calculate(data['structure'])
-        
-        elif function['type'] in ['SO4', 'Bispectrum', 'bispectrum']:
-            from pyxtal_ff.descriptors.SO4 import SO4_Bispectrum
-            d = SO4_Bispectrum(function['parameters']['lmax'],
-                               function['Rc'],
-                               derivative=function['force'],
-                               stress=function['stress'],
-                               normalize_U=function['parameters']['normalize_U'],
-                               cutoff_function=function['cutoff']).calculate(data['structure'])
-        
-        elif function['type'] in ['SO3', 'SOAP', 'soap']:
-            from pyxtal_ff.descriptors.SO3 import SO3
-            d = SO3(function['parameters']['nmax'],
-                    function['parameters']['lmax'],
+    elif function['type'] in ['wACSF', 'wacsf']:
+        from pyxtal_ff.descriptors.ACSF import ACSF
+        d = ACSF(function['parameters'],
+                    function['Rc'], 
+                    function['force'],
+                    function['stress'], 
+                    function['cutoff'], True).calculate(data['structure'])
+    
+    elif function['type'] in ['SO4', 'Bispectrum', 'bispectrum']:
+        from pyxtal_ff.descriptors.SO4 import SO4_Bispectrum
+        d = SO4_Bispectrum(function['parameters']['lmax'],
+                            function['Rc'],
+                            derivative=function['force'],
+                            stress=function['stress'],
+                            normalize_U=function['parameters']['normalize_U'],
+                            cutoff_function=function['cutoff']).calculate(data['structure'])
+    
+    elif function['type'] in ['SO3', 'SOAP', 'soap']:
+        from pyxtal_ff.descriptors.SO3 import SO3
+        d = SO3(function['parameters']['nmax'],
+                function['parameters']['lmax'],
+                function['Rc'],
+                alpha=function['parameters']['alpha'],
+                derivative=function['force'],
+                stress=function['stress']).calculate(data['structure'])
+
+    elif function['type'] in ['EAD', 'ead']:
+        from pyxtal_ff.descriptors.EAD import EAD
+        d = EAD(function['parameters'],
                     function['Rc'],
-                    alpha=function['parameters']['alpha'],
-                    derivative=function['force'],
-                    stress=function['stress']).calculate(data['structure'])
+                    function['force'], function['stress'],
+                    function['cutoff']).calculate(data['structure'])
+    
+    elif function['type'] in ['SNAP', 'snap']:
+        from pyxtal_ff.descriptors.SNAP import SO4_Bispectrum
+        d = SO4_Bispectrum(function['weights'],
+                            function['parameters']['lmax'],
+                            function['Rc'],
+                            derivative=function['force'],
+                            stress=function['stress'],
+                            normalize_U=function['parameters']['normalize_U'],
+                            cutoff_function=function['cutoff'],
+                            rfac0=function['parameters']['rfac']).calculate(data['structure'])
 
-        elif function['type'] in ['EAD', 'ead']:
-            from pyxtal_ff.descriptors.EAD import EAD
-            d = EAD(function['parameters'],
-                     function['Rc'],
-                     function['force'], function['stress'],
-                     function['cutoff']).calculate(data['structure'])
-        
-        elif function['type'] in ['SNAP', 'snap']:
-            from pyxtal_ff.descriptors.SNAP import SO4_Bispectrum
-            d = SO4_Bispectrum(function['weights'],
-                               function['parameters']['lmax'],
-                               function['Rc'],
-                               derivative=function['force'],
-                               stress=function['stress'],
-                               normalize_U=function['parameters']['normalize_U'],
-                               cutoff_function=function['cutoff'],
-                               rfac0=function['parameters']['rfac']).calculate(data['structure'])
+    else:
+        msg = f"{function['type']} is not implemented"
+        raise NotImplementedError(msg)
 
-        else:
-            msg = f"{function['type']} is not implemented"
-            raise NotImplementedError(msg)
+    if d['rdxdr'] is not None:
+        N = d['x'].shape[0]
+        L = d['x'].shape[1]
+        rdxdr = np.zeros([N, L, 3, 3])
+        for _m in range(N):
+            ids = np.where(d['seq'][:,0]==_m)[0]
+            rdxdr[_m, :, :, :] += np.einsum('ijkl->jkl', d['rdxdr'][ids, :, :, :])
+        d['rdxdr'] = rdxdr.reshape([N, L, 9])[:, :, [0, 4, 8, 1, 2, 5]]
+        #d['rdxdr'] = np.einsum('ijklm->iklm', d['rdxdr'])\
+        #.reshape([shp[0], shp[2], shp[3]*shp[4]])[:, :, [0, 4, 8, 1, 2, 5]]  #need to change
+    
+    #print(len(data['structure']))
+    
+    base_d = {'energy': 0., 'force': 0., 'stress': 0.}
+    
+    #print(data['energy'])
+    #print(base_d['energy'])
 
-        if d['rdxdr'] is not None:
-            N = d['x'].shape[0]
-            L = d['x'].shape[1]
-            rdxdr = np.zeros([N, L, 3, 3])
-            for _m in range(N):
-                ids = np.where(d['seq'][:,0]==_m)[0]
-                rdxdr[_m, :, :, :] += np.einsum('ijkl->jkl', d['rdxdr'][ids, :, :, :])
-            d['rdxdr'] = rdxdr.reshape([N, L, 9])[:, :, [0, 4, 8, 1, 2, 5]]
-            #d['rdxdr'] = np.einsum('ijklm->iklm', d['rdxdr'])\
-            #.reshape([shp[0], shp[2], shp[3]*shp[4]])[:, :, [0, 4, 8, 1, 2, 5]]  #need to change
-        
-        #print(len(data['structure']))
-        if self.base_potential:
-            base_d = self.base_potential.calculate(data['structure'])
-        else:
-            base_d = {'energy': 0., 'force': 0., 'stress': 0.}
-        
-        #print(data['energy'])
-        #print(base_d['energy'])
+    d['energy'] = np.asarray(data['energy'] - base_d['energy'])
+    d['force'] = np.asarray(data['force']) - base_d['force']
+    if data['stress'] is not None:
+        d['stress'] = np.asarray(data['stress']) - base_d['stress'] / units.GPa
+    else:
+        d['stress'] = data['stress'] 
+    d['group'] = data['group']
 
-        d['energy'] = np.asarray(data['energy'] - base_d['energy'])
-        d['force'] = np.asarray(data['force']) - base_d['force']
-        if data['stress'] is not None:
-            d['stress'] = np.asarray(data['stress']) - base_d['stress'] / units.GPa
-        else:
-            d['stress'] = data['stress'] 
-        d['group'] = data['group']
-
-        return d
+    return d
 
 
 def compute_descriptor(function, structure):

@@ -4,6 +4,7 @@ from pyxtal_ff.version import __version__
 from pyxtal_ff.utilities import Database
 from pyxtal_ff.models.polynomialregression import PR
 from pyxtal_ff.models.neuralnetwork import NeuralNetwork
+from pyxtal_ff.utilities.data2db import outcar2db_list, outcar2db
 
 class PyXtal_FF():
     def __init__(self, descriptors=None, model=None, logo=True):
@@ -157,7 +158,7 @@ class PyXtal_FF():
                              'N': None,
                              'N_train': None,
                              'N_test': None,
-                             'ncpu': 1,
+                            #  'ncpu': 1,
                              'force': True,
                              'stress': True,
                              'cutoff': 'cosine',
