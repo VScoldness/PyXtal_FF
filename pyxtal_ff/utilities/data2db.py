@@ -9,7 +9,7 @@ def outcar2db_list(outcar_path_list, db_path, group="Surface"):
     with connect(db_path) as _database:
         for cur_outcar in tqdm(outcar_path_list):
             try:
-                cur_structure , dat = outcar2db(cur_outcar, group)
+                cur_structure, dat = outcar2db(cur_outcar, group)
             except:
                 print("\nWrong data: ", cur_outcar)
                 wrong_files.append(cur_outcar)
@@ -21,15 +21,12 @@ def outcar2db_list(outcar_path_list, db_path, group="Surface"):
 
 def outcar2db(cur_outcar, group="Surface"):
     cur_structure = read(cur_outcar)
-    energy = -1 * cur_structure.get_stress()/units.GPa
-    energy[-1], energy[-3] = energy[-3], energy[-1]
+    stress = -1 * cur_structure.get_stress()/units.GPa
+    stress[-1], stress[-3] = stress[-3], stress[-1]
     dat = {'energy': cur_structure.get_potential_energy(),
             'force':  cur_structure.get_forces(),
-            'stress': energy,
+            'stress': stress,
             'group':  group}
-    print(cur_structure)
-    print(energy)
-    print(cur_structure.get_forces())
     return cur_structure, dat
 
 def combineDB(output: str, combined_bds: list[str]):

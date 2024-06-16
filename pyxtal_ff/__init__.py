@@ -4,7 +4,7 @@ from pyxtal_ff.version import __version__
 from pyxtal_ff.utilities import Database
 from pyxtal_ff.models.polynomialregression import PR
 from pyxtal_ff.models.neuralnetwork import NeuralNetwork
-from pyxtal_ff.utilities.data2db import outcar2db_list, outcar2db, combineDB
+from pyxtal_ff.utilities.data2db import outcar2db_list, outcar2db, combineDB, json2db
 
 class PyXtal_FF():
     def __init__(self, descriptors=None, model=None, logo=True):
