@@ -12,10 +12,10 @@ class Regressor:
         The arguments for the optimization method. These arguments are 
         passed with a dict.
     """
-    def __init__(self, method, user_kwargs):
+    def __init__(self, method, user_kwargs, lr=1):
         self.method = method
         
-        kwargs = {'lr': 1,}
+        kwargs = {'lr': lr,} # 1-> 10
         if method in ['lbfgs', 'LBFGS']:
             from pyxtal_ff.models.optimizers.lbfgs import LBFGS as optimizer
             _kwargs = {'max_iter': 100,
