@@ -211,7 +211,7 @@ class NeuralNetwork():
         else:
             # Look for previously saved models and continue optimizing from the last checkpoint.
             self.load_checkpoint(filename=self.restart, 
-                                 method=optimizer['method'], args=optimizer['parameters'])
+                                 method=optimizer['method'], args=optimizer['parameters'], lr=lr)
                 
         print(f"No of structures   : {self.no_of_structures}")
         print(f"No of descriptors  : {self.no_of_descriptors}")
