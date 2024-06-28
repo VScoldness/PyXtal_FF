@@ -232,7 +232,7 @@ class PyXtal_FF():
     def todict(self):
         return {"descriptor": self._descriptors, "model": self._model}
 
-    def run(self, mode='train', TrainData=None, TestData=None, mliap=None):
+    def run(self, mode='train', TrainData=None, TestData=None, mliap=None, lr=1):
         """ Command PyXtal_FF to run in 2 modes:
         1. train
             In train mode, PyXtal_FF needs TrainData and/or TestData to be defined.
@@ -287,7 +287,7 @@ class PyXtal_FF():
             
             print("=========================== Training =============================\n")
 
-            self.model.train('Train_db', optimizer=self.optimizer)
+            self.model.train('Train_db', optimizer=self.optimizer, lr=lr)
             self.model.save_checkpoint(des_info=self._descriptors)
             
             print("==================================================================\n")
@@ -314,6 +314,9 @@ class PyXtal_FF():
             self.algorithm = self._model['algorithm']
             self._MODEL(self._model)
             self._descriptors = self.model.load_checkpoint(filename=mliap)
+            train_stat = self.model.evaluate('Train_db', figname='Train.png')
+            test_stat =  self.model.evaluate('Test_db', figname='Test.png')
+
 
     
     def _MODEL(self, model):

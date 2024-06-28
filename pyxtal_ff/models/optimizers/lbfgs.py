@@ -222,6 +222,7 @@ class LBFGS(Optimizer):
                  line_search_fn=None):
         if max_eval is None:
             max_eval = max_iter * 5 // 4
+        print("\nlr in LBFGS optimizer is: ", lr)
         defaults = dict(
             lr=lr,
             max_iter=max_iter,

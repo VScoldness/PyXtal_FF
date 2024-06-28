@@ -163,7 +163,7 @@ class NeuralNetwork():
         self.drange = None
 
 
-    def train(self, TrainData, optimizer):
+    def train(self, TrainData, optimizer, lr=1):
         """ Training of Neural Network Potential. """
         # If batch_size is None and optimizer is Adam or SGD, 
         # then batch_size equals total structures.
@@ -205,13 +205,13 @@ class NeuralNetwork():
 
                 self.models[element] = eval(m).double().to(self.device)
 
-            self.regressor = Regressor(optimizer['method'], optimizer['parameters'])
+            self.regressor = Regressor(optimizer['method'], optimizer['parameters'], lr=lr)
             self.optimizer = self.regressor.regress(models=self.models)
 
         else:
             # Look for previously saved models and continue optimizing from the last checkpoint.
             self.load_checkpoint(filename=self.restart, 
-                                 method=optimizer['method'], args=optimizer['parameters'])
+                                 method=optimizer['method'], args=optimizer['parameters'], lr=lr)
                 
         print(f"No of structures   : {self.no_of_structures}")
         print(f"No of descriptors  : {self.no_of_descriptors}")
@@ -855,7 +855,7 @@ class NeuralNetwork():
                 f.write("bzeroflag 0 \n")
 
 
-    def load_checkpoint(self, filename=None, method=None, args=None):
+    def load_checkpoint(self, filename=None, method=None, args=None, lr=1):
         """ Load PyTorch Neural Network models at previously saved checkpoint. """
         checkpoint = torch.load(filename)
 
@@ -879,7 +879,7 @@ class NeuralNetwork():
                     raise ValueError(msg)
 
             # Set-up optimizer for optimizing NN weights.
-            self.regressor = Regressor(method, args)
+            self.regressor = Regressor(method, args, lr=lr)
             self.optimizer = self.regressor.regress(models=self.models)
 
             # If different optimizer is used in loading, start the opt. from scratch.
@@ -955,7 +955,7 @@ class NeuralNetwork():
         return _DRANGE
 
     
-    def normalize(self, data, drange, unit, norm=[0., 1.]):
+    def normalize(self, data, drange, unit, norm=[-10., 10.]):
         """ Normalizing the descriptors to the range of [0., 1.] based on the
         min and max value of the entire descriptors.
 
