@@ -473,9 +473,13 @@ class NeuralNetwork():
         # output = [[cur_energy_loss, cur_force_loss, cur_stress_loss, cur_energy_mae, cur_force_mae, cur_stress_mae, n_atoms, cur_count], ...]
         output = self._sum_together(output)
         
-        energy_loss = output[0] / (2. * len(batch))
-        force_loss  = output[1] / (2. * output[-2]) if output[-2] != 0 else 0
-        stress_loss = output[2] / (2. * output[-1]) if output[-1] != 0 else 0
+        # energy_loss = output[0] / (2. * len(batch))
+        # force_loss  = output[1] / (2. * output[-2]) if output[-2] != 0 else 0
+        # stress_loss = output[2] / (2. * output[-1]) if output[-1] != 0 else 0
+        energy_loss = output[0] / (1. * len(batch))
+        force_loss  = output[1] / (1. * output[-2]) if output[-2] != 0 else 0
+        stress_loss = output[2] / (1. * output[-1]) if output[-1] != 0 else 0
+        
         energy_mae  = output[3] / len(batch)
         force_mae   = output[4] / output[-2] if output[-2] != 0 else 0
         stress_mae  = output[5] / output[-1] if output[-1] != 0 else 0
@@ -955,7 +959,7 @@ class NeuralNetwork():
         return _DRANGE
 
     
-    def normalize(self, data, drange, unit, norm=[-10., 10.]):
+    def normalize(self, data, drange, unit, norm=[0., 1.]):
         """ Normalizing the descriptors to the range of [0., 1.] based on the
         min and max value of the entire descriptors.
 
