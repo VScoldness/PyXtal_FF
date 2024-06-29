@@ -1,6 +1,7 @@
 import torch
 from functools import reduce
 from torch.optim import Optimizer
+from tqdm import tqdm
 
 
 def _cubic_interpolate(x1, f1, g1, x2, f2, g2, bounds=None):
@@ -329,9 +330,10 @@ class LBFGS(Optimizer):
 
         n_iter = 0
         # optimize for a max of max_iter iterations
-        while n_iter < max_iter:
+        # while n_iter < max_iter:
+        for n_iter in tqdm(range(max_iter)):
             # keep track of nb of iterations
-            n_iter += 1
+            # n_iter += 1
             state['n_iter'] += 1
             print("\nIteration {:4d}: ".format(n_iter))
 
