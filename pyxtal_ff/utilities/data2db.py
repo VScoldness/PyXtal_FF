@@ -1,16 +1,30 @@
 from ase.db import connect
 from ase.io import read
+from ase.io.vasp import read_vasp_out
 from ase import units
 from monty.serialization import loadfn
 from tqdm import tqdm
+import numpy as np 
 
 
-def outcar2db_AIMD_list(outcar_path_list, db_path, idx_list, group="Non-Elastic"):
+
+def outcar2db_AIMD_list(outcar_path_list, db_path, idx_list = None, n_list = 0, group="Non-Elastic"):
     wrong_files = []
+    
+    if idx_list is None or n_list > 0:
+        read_idx = True
+    else:
+        read_idx = False
+
     with connect(db_path) as _database:
         for cur_outcar in tqdm(outcar_path_list):
-            for cur_idx in tqdm(idx_list):
+            if read_idx:
 
+                idx_list = [i for i in range(len(read_vasp_out(cur_outcar, index=':')))]
+                if n_list > 0:
+                    idx_list = evenly_select_elements(idx_list, n_list)
+      
+            for cur_idx in tqdm(idx_list):
                 try:
                     cur_structure, dat = outcar2db(cur_outcar, group, cur_idx)
                 except:
@@ -28,12 +42,12 @@ def outcar2db_list(outcar_path_list, db_path, group="Non-Elastic"):
         for cur_outcar in tqdm(outcar_path_list):
             try:
                 cur_structure, dat = outcar2db(cur_outcar, group)
+                _database.write(cur_structure, data=dat)
             except:
                 print("\nWrong data: ", cur_outcar)
                 wrong_files.append(cur_outcar)
-                continue
             finally:
-                _database.write(cur_structure, data=dat)
+                pass
     print(len(wrong_files))
 
 
@@ -41,7 +55,10 @@ def outcar2db(cur_outcar, group="Non-Elastic", idx=-1):
     cur_structure = read(cur_outcar, index=idx)
     stress = -1 * cur_structure.get_stress()/units.GPa
     stress[-1], stress[-3] = stress[-3], stress[-1]
-    dat = {'energy': cur_structure.get_potential_energy(),
+
+    cur_energy = cur_structure.get_potential_energy()
+
+    dat = {'energy': cur_energy,
             'force':  cur_structure.get_forces(),
             'stress': stress,
             'group':  group}
@@ -74,4 +91,17 @@ def json2db(json_path_list, db_path, group="NoElastic"):
                 _database.write(structure, data=dat)
 
 
+def evenly_select_elements(input_list, n):
+    if n <= 0:
+        return []
+    
+    if n >= len(input_list):
+        return input_list
 
+
+    step = len(input_list) / n
+    selected_elements = [input_list[int(i * step)] for i in range(n-1)]
+    
+    selected_elements.append(input_list[-1])
+
+    return selected_elements
