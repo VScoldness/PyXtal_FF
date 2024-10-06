@@ -24,8 +24,7 @@ plt.style.use("ggplot")
 from pyxtal_ff.models.optimizers.regressor import Regressor
 from pyxtal_ff.utilities.elements import Element
 
-# eV2GPa = 160.21766
-eV2GPa = 16.021766
+eV2GPa = 160.21766
 
 class NeuralNetwork():
     """ 
