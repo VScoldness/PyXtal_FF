@@ -1,5 +1,5 @@
 from ase.db import connect
-from ase.io import read
+from ase.io import read, write
 from ase.io.vasp import read_vasp_out
 from ase import units
 from monty.serialization import loadfn
@@ -105,3 +105,17 @@ def evenly_select_elements(input_list, n):
     selected_elements.append(input_list[-1])
 
     return selected_elements
+
+
+def db2XYZ(src, dst):
+    with connect(src) as database:
+        atom_list = []
+        for row in tqdm(database.select()):
+            structure = database.get_atoms(row.id)
+            force = np.array(row.data["force"])
+            structure.info["energy"] = row.data["energy"]
+            structure.arrays['force'] = force
+            
+            atom_list.append(structure)
+
+        write(dst, atom_list, format='extxyz')
